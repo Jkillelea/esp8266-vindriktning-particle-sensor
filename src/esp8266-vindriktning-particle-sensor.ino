@@ -6,6 +6,8 @@
 #include <PubSubClient.h>
 #include <WiFiManager.h>
 
+#include <DHT.h>
+
 #include "Config.h"
 #include "SerialCom.h"
 #include "Types.h"
@@ -17,6 +19,7 @@ uint8_t mqttRetryCounter = 0;
 WiFiManager wifiManager;
 WiFiClient wifiClient;
 PubSubClient mqttClient;
+DHT dht11(D5, DHT11);
 
 WiFiManagerParameter custom_mqtt_server("server", "mqtt server", Config::mqtt_server, sizeof(Config::mqtt_server));
 WiFiManagerParameter custom_mqtt_user("user", "MQTT username", Config::username, sizeof(Config::username));
@@ -58,6 +61,8 @@ void setup() {
     Serial.printf("Reset reason: %s\n", ESP.getResetReason().c_str());
 
     delay(3000);
+
+    dht11.begin();
 
     snprintf(identifier, sizeof(identifier), "VINDRIKTNING-%X", ESP.getChipId());
     snprintf(MQTT_TOPIC_AVAILABILITY, 127, "%s/%s/status", FIRMWARE_PREFIX, identifier);
@@ -117,7 +122,7 @@ void setupOTA() {
 
 void loop() {
     ArduinoOTA.handle();
-    SerialCom::handleUart(state);
+    SerialCom::handleSensors(state);
     mqttClient.loop();
 
     const uint32_t currentMillis = millis();
@@ -197,6 +202,8 @@ void publishState() {
     wifiJson["rssi"] = WiFi.RSSI();
 
     stateJson["pm25"] = state.avgPM25;
+    stateJson["degC"] = state.avgDegC;
+    stateJson["relHumid"] = state.avgHumid;
 
     stateJson["wifi"] = wifiJson.as<JsonObject>();
 
@@ -219,7 +226,7 @@ void publishAutoConfig() {
     device["manufacturer"] = "Ikea";
     device["model"] = "VINDRIKTNING";
     device["name"] = identifier;
-    device["sw_version"] = "2021.08.0";
+    device["sw_version"] = "2022.06.14";
 
     autoconfPayload["device"] = device.as<JsonObject>();
     autoconfPayload["availability_topic"] = MQTT_TOPIC_AVAILABILITY;
@@ -245,6 +252,34 @@ void publishAutoConfig() {
     autoconfPayload["value_template"] = "{{value_json.pm25}}";
     autoconfPayload["unique_id"] = identifier + String("_pm25");
     autoconfPayload["icon"] = "mdi:air-filter";
+
+    serializeJson(autoconfPayload, mqttPayload);
+    mqttClient.publish(&MQTT_TOPIC_AUTOCONF_WIFI_SENSOR[0], &mqttPayload[0], true);
+
+    autoconfPayload.clear();
+
+    autoconfPayload["device"] = device.as<JsonObject>();
+    autoconfPayload["availability_topic"] = MQTT_TOPIC_AVAILABILITY;
+    autoconfPayload["state_topic"] = MQTT_TOPIC_STATE;
+    autoconfPayload["name"] = identifier + String(" Degrees C");
+    autoconfPayload["unit_of_measurement"] = "C";
+    autoconfPayload["value_template"] = "{{value_json.degC}}";
+    autoconfPayload["unique_id"] = identifier + String("_degC");
+    autoconfPayload["icon"] = "mdi:thermometer";
+
+    serializeJson(autoconfPayload, mqttPayload);
+    mqttClient.publish(&MQTT_TOPIC_AUTOCONF_WIFI_SENSOR[0], &mqttPayload[0], true);
+
+    autoconfPayload.clear();
+
+    autoconfPayload["device"] = device.as<JsonObject>();
+    autoconfPayload["availability_topic"] = MQTT_TOPIC_AVAILABILITY;
+    autoconfPayload["state_topic"] = MQTT_TOPIC_STATE;
+    autoconfPayload["name"] = identifier + String(" Relative Humidity");
+    autoconfPayload["unit_of_measurement"] = "Percent RH";
+    autoconfPayload["value_template"] = "{{value_json.relHumid}}";
+    autoconfPayload["unique_id"] = identifier + String("_relHumid");
+    autoconfPayload["icon"] = "mdi:thermometer";
 
     serializeJson(autoconfPayload, mqttPayload);
     mqttClient.publish(&MQTT_TOPIC_AUTOCONF_PM25_SENSOR[0], &mqttPayload[0], true);

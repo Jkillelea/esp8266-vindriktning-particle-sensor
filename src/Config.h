@@ -4,7 +4,7 @@
 #include <FS.h>
 
 namespace Config {
-    char mqtt_server[80] = "example.tld";
+    char mqtt_server[80] = "surface-pro-4.attlocal.net";
 
     char username[24] = "";
     char password[24] = "";
